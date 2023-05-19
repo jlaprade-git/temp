@@ -1,0 +1,47 @@
+# Database connection details
+$server = "cghqpdbsql01.cisgroup.net"
+$database = "InfrastructureSupport"
+$table = "dbo.BitlockerKeys"
+
+# Get computer name
+$computerName = $env:COMPUTERNAME
+
+# Get computer serial number (PC Asset Tag)
+$computerSerialNumber = (Get-WmiObject -Class Win32_ComputerSystemProduct).IdentifyingNumber
+
+# Get BitLocker volume information
+$bitlockerVolume = Get-BitLockerVolume -MountPoint "C:"
+
+#Get the HDD SerialNumber in case we pull the disk from a machine
+$hddSerialNumber = Get-WMIObject win32_physicalmedia | select -ExpandProperty serialnumber
+
+# Generate a new BitLocker key
+$bitlockerKey = $bitlockerVolume.KeyProtector | Where-Object {$_.KeyProtectorType -eq 'RecoveryPassword'} | Select-Object -ExpandProperty Recoverypassword
+
+# SQL query to insert the data into the database
+$query = "INSERT INTO $table (BitLockerKey, ComputerName, PCAssetTag, HDDSerialNumber) VALUES ('$bitlockerKey', '$computerName', '$computerSerialNumber', '$hddSerialNumber')"
+
+# Create a new SQL connection using Windows authentication
+$connectionString = "Server=$server;Database=$database;Integrated Security=SSPI;"
+$connection = New-Object System.Data.SqlClient.SqlConnection($connectionString)
+
+try {
+    # Open the database connection
+    $connection.Open()
+
+    # Create a command object and execute the query
+    $command = $connection.CreateCommand()
+    $command.CommandText = $query
+    $command.ExecuteNonQuery()
+    
+    Write-Host "BitLocker key and additional data stored in the database successfully!"
+}
+catch {
+    Write-Host "An error occurred while storing the BitLocker key and additional data: $_"
+}
+finally {
+    # Close the database connection
+    $connection.Close()
+}
+
+
